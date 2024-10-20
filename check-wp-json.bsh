@@ -1,4 +1,15 @@
 #!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-json.bsh                                   +
+#+ Description    :                                                       +
+#+                                                                        +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com                               +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+------------------------------------------------------------------------+
+
+#set -x  #Debugging
 
 check_wp_json_feed() {
     url=$1
@@ -15,5 +26,5 @@ check_wp_json_feed() {
 }
 
 # Usage: pass the website URL as an argument
-check_wp_json_feed "https://example.com"
+check_wp_json_feed "$1"
 

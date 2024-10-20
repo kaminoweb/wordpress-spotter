@@ -1,4 +1,15 @@
 #!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-cookies.bsh                                +
+#+ Description    :                                                       +
+#+                                                                        +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com                               +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+------------------------------------------------------------------------+
+
+#set -x  #Debugging
 
 check_wp_cookies() {
     url=$1
@@ -14,5 +25,5 @@ check_wp_cookies() {
 }
 
 # Usage: pass the website URL as an argument
-check_wp_cookies "https://example.com"
+check_wp_cookies "$1"
 

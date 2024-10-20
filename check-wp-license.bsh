@@ -1,4 +1,15 @@
 #!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-license.bsh                                +
+#+ Description    :                                                       +
+#+                                                                        +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com                               +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+------------------------------------------------------------------------+
+
+#set -x  #Debugging
 
 check_wp_license() {
     url=$1
@@ -15,5 +26,5 @@ check_wp_license() {
 }
 
 # Usage: pass the website URL as an argument
-check_wp_license "https://example.com"
+check_wp_license "$1"
 

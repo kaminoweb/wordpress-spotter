@@ -1,4 +1,15 @@
 #!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-api2.bsh                                   +
+#+ Description    :                                                       +
+#+                                                                        +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com                               +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+------------------------------------------------------------------------+
+
+#set -x  #Debugging
 
 check_wp_api_v2() {
     url=$1
@@ -17,5 +28,5 @@ check_wp_api_v2() {
 }
 
 # Usage: pass the website URL as an argument
-check_wp_api_v2 "https://example.com"
+check_wp_api_v2 "$1"
 

@@ -1,4 +1,15 @@
 #!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-readme.bsh                                 +
+#+ Description    :                                                       +
+#+                                                                        +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com                               +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+------------------------------------------------------------------------+
+
+#set -x  #Debugging
 
 check_wp_readme() {
     url=$1
@@ -15,5 +26,5 @@ check_wp_readme() {
 }
 
 # Usage: pass the website URL as an argument
-check_wp_readme "https://example.com"
+check_wp_readme "$1"
 
