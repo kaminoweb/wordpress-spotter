@@ -11,6 +11,18 @@
 
 #set -x  #Debugging
 
+check_url_format() {
+    url=$1
+
+    # Check if the URL starts with "http://" or "https://"
+    if [[ "$url" =~ ^https?:// ]]; then
+        echo "URL is properly formatted."
+    else
+        echo "Error: URL must start with 'http://' or 'https://'."
+        exit 1
+    fi
+}
+
 check_wp_xmlrpc() {
     url=$1
     # Check for the existence of the xmlrpc.php file
@@ -25,6 +37,6 @@ check_wp_xmlrpc() {
     fi
 }
 
-# Usage: pass the website URL as an argument
+check_url_format "$1"
 check_wp_xmlrpc "$1"
 
