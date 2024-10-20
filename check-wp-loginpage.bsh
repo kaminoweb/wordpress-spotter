@@ -1,0 +1,19 @@
+#!/bin/bash
+
+check_wp_login_page() {
+    url=$1
+    # Try to access the wp-login.php page
+    login_url="${url%/}/wp-login.php"
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$login_url")
+
+    # Check if the login page exists (usually returns a 200 or 302 status code)
+    if [[ "$response" == "200" || "$response" == "302" ]]; then
+        echo "The website has a WordPress login page (detected via wp-login.php)."
+    else
+        echo "No WordPress login page found."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_login_page "https://example.com"
+

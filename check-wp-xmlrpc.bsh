@@ -1,0 +1,19 @@
+#!/bin/bash
+
+check_wp_xmlrpc() {
+    url=$1
+    # Check for the existence of the xmlrpc.php file
+    xmlrpc_url="${url%/}/xmlrpc.php"
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$xmlrpc_url")
+
+    # If the file exists, it will return a 200 status code
+    if [[ "$response" == "200" ]]; then
+        echo "WordPress detected via xmlrpc.php file."
+    else
+        echo "No xmlrpc.php file found."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_xmlrpc "https://example.com"
+

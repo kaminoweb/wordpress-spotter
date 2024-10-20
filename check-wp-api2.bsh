@@ -1,0 +1,21 @@
+#!/bin/bash
+
+check_wp_api_v2() {
+    url=$1
+    # Construct the WordPress REST API URL for version 2
+    api_url="${url%/}/wp-json/wp/v2/"
+
+    # Make a request to the WordPress REST API v2 endpoint
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$api_url")
+
+    # Check if the API responds with a 200 (OK) status code
+    if [[ "$response" == "200" ]]; then
+        echo "The website is responding to the WordPress REST API v2."
+    else
+        echo "The website is not responding to the WordPress REST API v2."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_api_v2 "https://example.com"
+

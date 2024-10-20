@@ -1,0 +1,18 @@
+#!/bin/bash
+
+check_wp_cookies() {
+    url=$1
+    # Fetch cookies using curl
+    cookies=$(curl -s -I "$url" | grep -i 'Set-Cookie')
+
+    # Check for WordPress-specific cookies
+    if echo "$cookies" | grep -q 'wordpress_logged_in_\|wp-settings-\|wp-settings-time-'; then
+        echo "WordPress detected via cookies."
+    else
+        echo "No WordPress-specific cookies found."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_cookies "https://example.com"
+

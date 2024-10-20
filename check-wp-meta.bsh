@@ -1,0 +1,18 @@
+#!/bin/bash
+
+check_wp_meta() {
+    url=$1
+    # Download the HTML source code of the page
+    html=$(curl -s "$url")
+
+    # Check for the WordPress meta tag
+    if echo "$html" | grep -q 'name="generator" content="WordPress'; then
+        echo "The website is using WordPress (detected via meta tag)."
+    else
+        echo "No WordPress meta tag found."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_meta "https://example.com"
+

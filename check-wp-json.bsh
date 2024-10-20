@@ -1,0 +1,19 @@
+#!/bin/bash
+
+check_wp_json_feed() {
+    url=$1
+    # Check for the WordPress JSON feed
+    feed_url="${url%/}/wp-json/wp/v2/posts"
+    response=$(curl -s -o /dev/null -w "%{http_code}" "$feed_url")
+
+    # If the feed exists, it will return a 200 status code
+    if [[ "$response" == "200" ]]; then
+        echo "WordPress detected via JSON feed."
+    else
+        echo "No JSON feed found."
+    fi
+}
+
+# Usage: pass the website URL as an argument
+check_wp_json_feed "https://example.com"
+

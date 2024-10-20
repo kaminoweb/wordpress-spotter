@@ -1,0 +1,10 @@
+#!/bin/bash
+
+url=$1
+
+response=$(curl -s -X POST -H "Content-Type: application/json" -d '{"query": "query { __typename }"}' "$url/graphql")
+if [[ $response =~ "200 OK" ]]; then
+  echo "True"
+else
+  echo "False"
+fi
