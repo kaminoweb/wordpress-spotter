@@ -1,7 +1,7 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-loginpage.bsh                              +
-#+ Description    :                                                       +
+#+ Description    :   Checks if a given URL has a standard WordPress login page.
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
@@ -11,32 +11,64 @@
 
 #set -x  #Debugging
 
+# Function to display usage information
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Checks if a given URL has a standard WordPress login page."
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
 check_url_format() {
-    url=$1
+    local url=$1
 
     # Check if the URL starts with "http://" or "https://"
     if [[ "$url" =~ ^https?:// ]]; then
         echo "URL is properly formatted."
     else
-        echo "Error: URL must start with 'http://' or 'https://'."
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
 check_wp_login_page() {
-    url=$1
+    local url=$1
+    local login_url="${url%/}/wp-login.php"
+    local http_code
+    local curl_status
+
     # Try to access the wp-login.php page
-    login_url="${url%/}/wp-login.php"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$login_url")
+    http_code=$(curl --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "$login_url")
+    curl_status=$?
+
+    if [ $curl_status -ne 0 ]; then
+        echo "Error: curl command failed with exit code $curl_status. Could not connect to the URL." >&2
+        exit 1
+    fi
 
     # Check if the login page exists (usually returns a 200 or 302 status code)
-    if [[ "$response" == "200" || "$response" == "302" ]]; then
+    if [[ "$http_code" == "200" || "$http_code" == "302" ]]; then
         echo "The website has a WordPress login page (detected via wp-login.php)."
     else
-        echo "No WordPress login page found."
+        echo "No WordPress login page found (HTTP status: $http_code)."
     fi
 }
 
-check_url_format "$1"
-check_wp_login_page "$1"
+main() {
+    if [ -z "$1" ]; then
+        echo "Error: No URL provided." >&2
+        usage
+    fi
 
+    if ! command -v curl &> /dev/null; then
+        echo "Error: curl is not installed. Please install it to run this script." >&2
+        exit 1
+    fi
+    
+    local url=$1
+    check_url_format "$url"
+    check_wp_login_page "$url"
+}
+
+# Pass all command-line arguments to main
+main "$@"

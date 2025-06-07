@@ -1,20 +1,54 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-graphql.bsh                                +
-#+ Description    :                                                       +
+#+ Description    :   Checks for a responsive WordPress GraphQL endpoint. +
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Modified       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+# Exit immediately if a command exits with a non-zero status.
+set -e
+# Treat unset variables as an error when substituting.
+set -u
+# Ensures that a pipeline command returns the exit status of the last command to exit with a non-zero status.
+set -o pipefail
 
-url=$1
+# --- Functions ---
 
-response=$(curl -s -X POST -H "Content-Type: application/json" -d '{"query": "query { __typename }"}' "$url/graphql")
-if [[ $response =~ "200 OK" ]]; then
+# Print usage information and exit.
+usage() {
+  echo "Usage: $0 <url>"
+  echo "Example: $0 https://example.com"
+  exit 1
+}
+
+# --- Main Script ---
+
+# Check if a URL argument is provided. The `${1-}` syntax prevents an "unbound variable" error when `set -u` is active.
+if [ -z "${1-}" ]; then
+  echo "Error: No URL provided." >&2 # Print errors to stderr
+  usage
+fi
+
+url="$1"
+graphql_url="${url%/}/graphql" # Remove trailing slash from URL if it exists, then add /graphql
+query='{"query": "query { __typename }"}'
+response_body_file=$(mktemp) # Create a secure temporary file
+trap 'rm -f "$response_body_file"' EXIT # Ensure temp file is deleted on script exit
+
+# Use curl to get the HTTP status code and write the body to a temp file.
+# -L: Follow redirects.
+# --connect-timeout 10: Time out after 10 seconds.
+# -w '%{http_code}': Write out the HTTP status code to stdout.
+# -o "$response_body_file": Write the response body to our temp file.
+http_code=$(curl -s -L --connect-timeout 10 -w "%{http_code}" -o "$response_body_file" -X POST -H "Content-Type: application/json" -d "$query" "$graphql_url")
+
+# Check if the HTTP status is 200 and the response body indicates a successful GraphQL query.
+if [ "$http_code" -eq 200 ] && grep -q '"data":{"__typename"' "$response_body_file"; then
   echo "True"
 else
   echo "False"

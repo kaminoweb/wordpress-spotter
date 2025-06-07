@@ -1,44 +1,81 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-api.bsh                                    +
-#+ Description    :                                                       +
+#+ Description    :   Checks if a WordPress site has the REST API enabled.+
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
 #set -x  #Debugging
 
-check_url_format() {
-    url=$1
+# --- Functions ---
+
+# Displays usage information
+usage() {
+    echo "Usage: $0 <url>"
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
+# Checks if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Main function to check the WordPress API
+check_wp_api() {
+    local url=$1
+    local user_agent="WordPress API Checker/1.0"
 
     # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo "[-] Error: URL must start with 'http://' or 'https://'."
         exit 1
     fi
-}
 
-check_wp_api() {
-    url=$1
+    echo "[*] Checking WordPress REST API for: $url"
+
     # Construct the WordPress REST API URL
-    api_url="${url%/}/wp-json/"
+    local api_url="${url%/}/wp-json/"
 
     # Make a request to the WordPress REST API endpoint
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$api_url")
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -A "$user_agent" "$api_url")
+    curl_exit_code=$?
+
+    # Check curl's exit code
+    if [ $curl_exit_code -ne 0 ]; then
+        echo "[-] Error: curl command failed with exit code $curl_exit_code. Check your network connection or the URL."
+        return 1
+    fi
 
     # Check if the API responds with a 200 (OK) status code
-    if [[ "$response" == "200" ]]; then
-        echo "The website is responding to the WordPress REST API."
+    if [[ "$http_code" == "200" ]]; then
+        echo "[+] The website is responding to the WordPress REST API."
     else
-        echo "The website is not responding to the WordPress REST API."
+        echo "[-] The website is not responding to the WordPress REST API (HTTP Status: $http_code)."
     fi
 }
 
-check_url_format "$1"
-check_wp_api "$1"
+# --- Main Execution ---
 
+main() {
+    # Check if curl is installed
+    if ! command_exists curl; then
+        echo "[-] Error: curl is not installed. Please install it to continue."
+        exit 1
+    fi
+
+    # Check for URL argument
+    if [ -z "$1" ]; then
+        usage
+    fi
+
+    check_wp_api "$1"
+}
+
+# Run the main function with all script arguments
+main "$@"

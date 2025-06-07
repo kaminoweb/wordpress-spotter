@@ -1,41 +1,85 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-directories.bsh                            +
-#+ Description    :                                                       +
-#+                                                                        +
+#+ Description    :   Checks if a URL hosts a WordPress site by probing   +
+#+                  :   for common directories and files.                 +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+#set -x # Uncomment for debugging
 
-check_url_format() {
-    url=$1
+# --- Style Definitions ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
-        exit 1
-    fi
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://example.com"
+    exit 1
 }
 
-check_wp_content() {
-    url=$1
-    # Download the HTML source code of the page
-    html=$(curl -s "$url")
+# --- Main Logic ---
 
-    # Check for '/wp-content/' or '/wp-includes/'
-    if echo "$html" | grep -q '/wp-content/\|/wp-includes/'; then
-        echo "The website is likely using WordPress."
+# 1. Check for URL argument
+if [ -z "$1" ]; then
+    echo -e "${RED}Error: No URL provided.${NC}"
+    usage
+fi
+
+TARGET_URL=$1
+
+# 2. Validate URL format
+if [[ ! "$TARGET_URL" =~ ^https?:// ]]; then
+    echo -e "${RED}Error: URL must start with 'http://' or 'https://'.${NC}"
+    usage
+fi
+
+# Remove trailing slash if it exists
+TARGET_URL=${TARGET_URL%/}
+
+echo -e "${YELLOW}Checking URL: $TARGET_URL${NC}"
+
+# 3. Define WordPress paths to check
+declare -a wp_paths=(
+    "/wp-content/"
+    "/wp-includes/"
+    "/wp-admin/"
+    "/readme.html"
+    "/xmlrpc.php"
+)
+
+is_wordpress=false
+
+# 4. Probe each path
+for path in "${wp_paths[@]}"; do
+    local url_to_check="$TARGET_URL$path"
+    # Use curl to get only the HTTP status code.
+    # -o /dev/null: Discard output
+    # -s: Silent mode
+    # -w "%{http_code}": Write out the status code
+    # -L: Follow redirects
+    # --max-time 10: Timeout after 10 seconds
+    local status_code=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "$url_to_check")
+
+    if [ "$status_code" -eq 200 ] || [ "$status_code" -eq 403 ] || [ "$status_code" -eq 301 ] || [ "$status_code" -eq 302 ]; then
+        echo -e "  -> Found '$path' with status ${GREEN}${status_code}${NC}"
+        is_wordpress=true
+        break # Found one, no need to check further
     else
-        echo "The website is not using WordPress."
+        echo -e "  -> Did not find '$path' (status ${RED}${status_code}${NC})"
     fi
-}
+done
 
-check_url_format "$1"
-check_wp_content "$1"
-
+# 5. Final conclusion
+echo "" # Newline for readability
+if [ "$is_wordpress" = true ]; then
+    echo -e "${GREEN}Conclusion: The website at $TARGET_URL is likely a WordPress site.${NC}"
+else
+    echo -e "${RED}Conclusion: The website at $TARGET_URL does not appear to be a WordPress site.${NC}"
+fi

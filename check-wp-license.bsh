@@ -1,42 +1,52 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-license.bsh                                +
-#+ Description    :                                                       +
-#+                                                                        +
+#+ Description    :   Checks for a WordPress license.txt file at a        +
+#+                  :   given URL. Exits with 0 if found, 1 otherwise.    +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Modified       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+#set -x  # Uncomment for debugging
 
-check_url_format() {
-    url=$1
+# Prints a usage message and exits.
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
+main() {
+    # Ensure an argument is provided
+    if [[ -z "$1" ]]; then
+        usage
+    fi
+
+    local url="$1"
 
     # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
+    if ! [[ "$url" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
+        exit 1
+    fi
+
+    # Check for the WordPress license file, following redirects (-L)
+    local license_url="${url%/}/license.txt"
+    local http_code
+
+    http_code=$(curl -s -L -o /dev/null -w "%{http_code}" "$license_url")
+
+    # If the file exists, it will return a 200 status code
+    if [[ "$http_code" == "200" ]]; then
+        echo "WordPress detected via license.txt file."
+        exit 0
     else
-        echo "Error: URL must start with 'http://' or 'https://'."
+        echo "No license.txt file found (HTTP status: $http_code)."
         exit 1
     fi
 }
 
-check_wp_license() {
-    url=$1
-    # Check for the WordPress license file
-    license_url="${url%/}/license.txt"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$license_url")
-
-    # If the file exists, it will return a 200 status code
-    if [[ "$response" == "200" ]]; then
-        echo "WordPress detected via license.txt file."
-    else
-        echo "No license.txt file found."
-    fi
-}
-
-check_url_format "$1"
-check_wp_license "$1"
-
+main "$@"

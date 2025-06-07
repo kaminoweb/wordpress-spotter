@@ -1,42 +1,56 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-json.bsh                                   +
-#+ Description    :                                                       +
+#+ Description    :   Checks for WordPress presence via the REST API JSON feed.
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/06/25 - Improved validation, robustness, and output.
 #+------------------------------------------------------------------------+
 
 #set -x  #Debugging
 
-check_url_format() {
-    url=$1
+# --- Function to display usage information ---
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "  Checks if a given URL exposes a WordPress JSON REST API endpoint."
+    echo "Example: $0 https://example.com"
+    exit 1
+}
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+# --- Main script logic ---
+main() {
+    local url="$1"
+
+    # 1. Input Validation: Check if URL is provided
+    if [[ -z "$url" ]]; then
+        echo "Error: No URL provided." >&2
+        usage
+    fi
+
+    # 2. URL Format Validation
+    if ! [[ "$url" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
-}
 
-check_wp_json_feed() {
-    url=$1
-    # Check for the WordPress JSON feed
-    feed_url="${url%/}/wp-json/wp/v2/posts"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$feed_url")
+    # 3. Check for the WordPress JSON feed
+    local feed_url="${url%/}/wp-json/wp/v2/posts"
+    # Use -L to follow redirects, --max-time for timeout, -s for silent, -w for write-out
+    local http_code
+    http_code=$(curl --head -L -s -o /dev/null --max-time 10 -w "%{http_code}" "$feed_url")
 
-    # If the feed exists, it will return a 200 status code
-    if [[ "$response" == "200" ]]; then
+    # 4. Report result and set exit code
+    if [[ "$http_code" == "200" ]]; then
         echo "WordPress detected via JSON feed."
+        exit 0 # Success
     else
-        echo "No JSON feed found."
+        echo "No WordPress JSON feed found (Status code: $http_code)."
+        exit 1 # Failure
     fi
 }
 
-check_url_format "$1"
-check_wp_json_feed "$1"
-
+# --- Execute main function with the first script argument ---
+main "$1"

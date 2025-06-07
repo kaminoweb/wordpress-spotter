@@ -1,42 +1,58 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
-#+ Name           :   check-wp-readme.bsh                                 +
-#+ Description    :                                                       +
-#+                                                                        +
-#+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
-#+                                                                        +
-#+ Creation       :   20/10/24                                            +
+#| Name           :   check-wp-readme.bsh                                 |
+#| Description    :   Checks for WordPress readme.html and version.       |
+#| Author         :   KAMINOWEB INC                                       |
+#| www            :   https://kaminoweb.com                               |
+#| Creation       :   20/10/24                                            +
+#| Modified       :   06/06/25                                            |
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+set -eo pipefail # Exit on error, and on pipe failures
 
-check_url_format() {
-    url=$1
+usage() {
+    echo "Usage: $0 <url>"
+    echo "Example: $0 https://example.com"
+    exit 1
+}
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
+# Function to print errors to stderr
+error() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+main() {
+    local url="$1"
+
+    # 1. Input Validation
+    if [[ -z "$url" ]]; then
+        usage
+    fi
+
+    # 2. URL Format Check
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        error "URL must start with 'http://' or 'https://'."
+    fi
+
+    # 3. Check for readme.html and get version
+    local readme_url="${url%/}/readme.html"
+    local response
+    response=$(curl -sL "$readme_url") # -L to follow redirects
+
+    if [[ -n "$response" ]]; then
+        echo "WordPress detected: $readme_url"
+        # 4. Extract version
+        local version
+        version=$(echo "$response" | grep -oP 'Version \K[0-9.]+')
+        if [[ -n "$version" ]]; then
+            echo "WordPress Version: $version"
+        else
+            echo "Could not determine WordPress version from readme.html."
+        fi
     else
-        echo "Error: URL must start with 'http://' or 'https://'."
-        exit 1
+        echo "No WordPress readme.html file found."
     fi
 }
 
-check_wp_readme() {
-    url=$1
-    # Check for the WordPress readme.html file
-    readme_url="${url%/}/readme.html"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$readme_url")
-
-    # If the file exists, it will return a 200 status code
-    if [[ "$response" == "200" ]]; then
-        echo "WordPress detected via readme.html file."
-    else
-        echo "No readme.html file found."
-    fi
-}
-
-check_url_format "$1"
-check_wp_readme "$1"
-
+main "$@"

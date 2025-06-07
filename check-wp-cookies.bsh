@@ -1,32 +1,36 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-cookies.bsh                                +
-#+ Description    :                                                       +
+#+ Description    :   Check for WordPress cookies on a given URL.         +
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
-#+ Creation       :   20/10/24                                            +
+#+ Creation       :   2024-10-20                                          +
+#+ Modified       :   2025-06-06                                          +
 #+------------------------------------------------------------------------+
 
 #set -x  #Debugging
 
-check_url_format() {
-    url=$1
+usage() {
+    echo "Usage: $0 <url>" >&2
+    echo "Example: $0 https://example.com" >&2
+    exit 1
+}
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+check_url_format() {
+    local url=$1
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
 check_wp_cookies() {
-    url=$1
-    # Fetch cookies using curl
-    cookies=$(curl -s -I "$url" | grep -i 'Set-Cookie')
+    local url=$1
+    # Fetch cookies using curl, following redirects
+    local cookies
+    cookies=$(curl -s -L -I "$url" | grep -i 'Set-Cookie')
 
     # Check for WordPress-specific cookies
     if echo "$cookies" | grep -q 'wordpress_logged_in_\|wp-settings-\|wp-settings-time-'; then
@@ -36,6 +40,13 @@ check_wp_cookies() {
     fi
 }
 
-check_url_format "$1"
-check_wp_cookies "$1"
+main() {
+    if [ -z "$1" ]; then
+        usage
+    fi
 
+    check_url_format "$1"
+    check_wp_cookies "$1"
+}
+
+main "$@"

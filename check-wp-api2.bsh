@@ -1,44 +1,87 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-api2.bsh                                   +
-#+ Description    :                                                       +
+#+ Description    :   Checks if a WordPress site responds to the REST API v2.
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Modified       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
 #set -x  #Debugging
 
-check_url_format() {
-    url=$1
+# --- Functions ---
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
+# Display usage information
+usage() {
+    echo "Usage: $0 <url>"
+    echo "Description: Checks if a WordPress site responds to the REST API v2."
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
+# Main logic of the script
+main() {
+    local url="$1"
+
+    # 1. Validate Input
+    if [[ -z "$url" ]]; then
+        echo "Error: No URL provided."
+        usage
+    fi
+
+    if [[ ! "$url" =~ ^https?:// ]]; then
         echo "Error: URL must start with 'http://' or 'https://'."
         exit 1
     fi
-}
 
-check_wp_api_v2() {
-    url=$1
-    # Construct the WordPress REST API URL for version 2
-    api_url="${url%/}/wp-json/wp/v2/"
+    # 2. Check API Endpoint
+    local api_url="${url%/}/wp-json/wp/v2/"
+    echo "Checking API endpoint: $api_url"
 
-    # Make a request to the WordPress REST API v2 endpoint
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$api_url")
+    # Use -L to follow redirects, -s for silent, -o /dev/null to discard output, -w "%{http_code}" to get HTTP code
+    local http_code
+    http_code=$(curl -L -s -o /dev/null -w "%{http_code}" "$api_url")
+    local curl_exit_code=$?
 
-    # Check if the API responds with a 200 (OK) status code
-    if [[ "$response" == "200" ]]; then
-        echo "The website is responding to the WordPress REST API v2."
-    else
-        echo "The website is not responding to the WordPress REST API v2."
+    # 3. Handle Curl Errors (e.g., DNS, connection refused)
+    if [[ $curl_exit_code -ne 0 ]]; then
+        echo "Error: curl command failed with exit code $curl_exit_code. Could not reach the URL."
+        exit 1
     fi
+
+    # 4. Report Result based on HTTP code
+    case "$http_code" in
+        200)
+            echo "Success: The WordPress REST API v2 is responding. (HTTP 200)"
+            exit 0
+            ;;
+        301|302)
+            # This case is handled by -L, but good to be aware of.
+            echo "Notice: The URL redirects. Check the final destination. (HTTP $http_code)"
+            exit 1
+            ;;
+        403)
+            echo "Error: Access to the API is forbidden. (HTTP 403)"
+            exit 1
+            ;;
+        404)
+            echo "Error: The API endpoint was not found. (HTTP 404)"
+            exit 1
+            ;;
+        5*)
+            echo "Error: The server returned an error. (HTTP $http_code)"
+            exit 1
+            ;;
+        *)
+            echo "The website is not responding as expected to the WordPress REST API v2. (HTTP $http_code)"
+            exit 1
+            ;;
+    esac
 }
 
-check_url_format "$1"
-check_wp_api_v2 "$1"
-
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
+main "$@"

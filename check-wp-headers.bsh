@@ -1,7 +1,7 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-headers.bsh                                +
-#+ Description    :                                                       +
+#+ Description    :   Checks for WordPress indicators in HTTP headers.    +
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
@@ -9,33 +9,84 @@
 #+ Creation       :   20/10/24                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+# Exit immediately if a command exits with a non-zero status.
+set -e
+#set -x # Uncomment for debugging
 
+# Function to display usage information
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
+# Function to check URL format
 check_url_format() {
-    url=$1
-
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+    local url="$1"
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
-check_wp_header() {
-    url=$1
-    # Fetch headers only using curl
-    headers=$(curl -I -s "$url")
+# Function to check for WordPress headers
+check_wp_headers() {
+    local url="$1"
+    local headers
+    local is_wordpress=false
 
-    # Check for 'WordPress' in headers
+    echo "Fetching headers for: $url"
+
+    # Fetch headers only using curl with a timeout
+    headers=$(curl -I -s --max-time 10 "$url" 2>/dev/null || true)
+
+    if [ -z "$headers" ]; then
+        echo "Error: Could not retrieve headers from $url. Check URL or network connection." >&2
+        return 1
+    fi
+
+    echo "--- HTTP Headers ---"
+    echo "$headers"
+    echo "--------------------"
+
+    # Check for 'X-Powered-By: WordPress'
     if echo "$headers" | grep -i 'X-Powered-By' | grep -qi 'WordPress'; then
-        echo "The website is using WordPress (detected via HTTP header)."
+        echo "Detected: X-Powered-By: WordPress header."
+        is_wordpress=true
+    fi
+
+    # Check for WordPress REST API Link header
+    if echo "$headers" | grep -i 'Link' | grep -qi 'wp-json' && echo "$headers" | grep -i 'Link' | grep -qi 'rel="https://api.w.org/"'; then
+        echo "Detected: WordPress REST API Link header (rel=\"https://api.w.org/\")."
+        is_wordpress=true
+    fi
+
+    # Check for X-Pingback header
+    if echo "$headers" | grep -i 'X-Pingback'; then
+        echo "Detected: X-Pingback header."
+        is_wordpress=true
+    fi
+
+    if $is_wordpress; then
+        echo ""
+        echo "Conclusion: The website is likely using WordPress."
+        return 0
     else
-        echo "No WordPress-related HTTP headers found."
+        echo ""
+        echo "Conclusion: No strong WordPress-related HTTP headers found."
+        return 1
     fi
 }
 
-check_url_format "$1"
-check_wp_header "$1"
+# Main execution
+main() {
+    if [ -z "$1" ]; then
+        usage
+    fi
 
+    local target_url="$1"
+    check_url_format "$target_url"
+    check_wp_headers "$target_url"
+}
+
+main "$@"

@@ -1,42 +1,82 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-themes.bsh                                 +
-#+ Description    :                                                       +
-#+                                                                        +
+#+ Description    :   Checks for the presence of common WordPress themes  +
+#+                  on a given URL to determine if it's a WordPress site. +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+# A list of common default WordPress themes
+COMMON_THEMES=(
+    "twentyfifteen"
+    "twentysixteen"
+    "twentyseventeen"
+    "twentynineteen"
+    "twentytwenty"
+    "twentytwentyone"
+    "twentytwentytwo"
+    "twentytwentythree"
+    "twentytwentyfour"
+)
 
+# --- Functions ---
+
+# Displays usage information and exits
+usage() {
+    printf "Usage: %s <URL>\n" "$0"
+    printf "Example: %s https://example.com\n" "$0"
+    exit 1
+}
+
+# Checks if the URL is properly formatted (starts with http:// or https://)
 check_url_format() {
-    url=$1
-
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+    local url=$1
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        printf "Error: URL must start with 'http://' or 'https://'.\n" >&2
         exit 1
     fi
 }
 
-check_wp_theme() {
-    url=$1
-    # Check for the existence of a common WordPress theme directory
-    theme_url="${url%/}/wp-content/themes/twentytwentyone/"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$theme_url")
+# Checks for common WordPress themes
+check_wp_themes() {
+    local base_url=$1
+    local found_theme=false
 
-    # If the directory exists, it will return a 200 status code
-    if [[ "$response" == "200" ]]; then
-        echo "WordPress detected via common theme (twentytwentyone)."
-    else
-        echo "No common WordPress themes found."
+    # Remove trailing slash if it exists
+    base_url="${base_url%/}"
+
+    printf "[-] Checking for WordPress themes on %s\n" "$base_url"
+
+    for theme in "${COMMON_THEMES[@]}"; do
+        local theme_url="${base_url}/wp-content/themes/${theme}/"
+        # Use curl to get the HTTP status code quietly
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$theme_url")
+
+        if [[ "$http_code" == "200" ]]; then
+            printf "[+] WordPress detected! Found theme: %s\n" "$theme"
+            printf "    URL: %s\n" "$theme_url"
+            found_theme=true
+            break # Exit loop once a theme is found
+        fi
+    done
+
+    if [[ "$found_theme" == false ]]; then
+        printf "[-] No common WordPress themes found.\n"
     fi
 }
 
-check_url_format "$1"
-check_wp_theme "$1"
+# --- Main Execution ---
 
+# Check if an argument was provided
+if [[ $# -eq 0 ]]; then
+    usage
+fi
+
+main_url=$1
+check_url_format "$main_url"
+check_wp_themes "$main_url"

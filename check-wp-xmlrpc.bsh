@@ -1,42 +1,66 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-xmlrpc.bsh                                 +
-#+ Description    :                                                       +
+#+ Description    :   Checks for the presence of xmlrpc.php on a server.  +
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+# Exit on error, treat unset variables as errors, and handle pipeline failures
+set -euo pipefail
 
+# --- Functions ---
+
+# Display usage information
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://example.com"
+    exit 1
+}
+
+# Validate the URL format
 check_url_format() {
-    url=$1
-
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+    local url=$1
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
+# Check for the xmlrpc.php file
 check_wp_xmlrpc() {
-    url=$1
-    # Check for the existence of the xmlrpc.php file
-    xmlrpc_url="${url%/}/xmlrpc.php"
-    response=$(curl -s -o /dev/null -w "%{http_code}" "$xmlrpc_url")
+    local url=$1
+    local xmlrpc_url="${url%/}/xmlrpc.php"
+    
+    echo "[-] Checking for xmlrpc.php at: $xmlrpc_url"
+    
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" "$xmlrpc_url")
 
-    # If the file exists, it will return a 200 status code
-    if [[ "$response" == "200" ]]; then
-        echo "WordPress detected via xmlrpc.php file."
+    if [[ "$http_code" == "200" || "$http_code" == "405" ]]; then
+        echo "[+] WordPress detected via xmlrpc.php (HTTP Status: $http_code)."
     else
-        echo "No xmlrpc.php file found."
+        echo "[-] No xmlrpc.php file found (HTTP Status: $http_code)."
     fi
 }
 
-check_url_format "$1"
-check_wp_xmlrpc "$1"
+# --- Main Logic ---
 
+main() {
+    # Check if an argument was provided
+    if [ "$#" -ne 1 ]; then
+        usage
+    fi
+
+    local target_url=$1
+    
+    check_url_format "$target_url"
+    check_wp_xmlrpc "$target_url"
+}
+
+# Execute the main function with all script arguments
+main "$@"

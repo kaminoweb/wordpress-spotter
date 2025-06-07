@@ -1,41 +1,62 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-meta.bsh                                   +
-#+ Description    :                                                       +
+#+ Description    :   Checks if a website is running on WordPress by      +
+#+                  :   inspecting the generator meta tag.                +
 #+                                                                        +
 #+ Author         :   KAMINOWEB INC                                       +
 #+ www            :   https://kaminoweb.com                               +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
+#+ Modified       :   06/06/25                                            +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+# Exit immediately if a command exits with a non-zero status.
+set -o errexit
+# Treat unset variables as an error when substituting.
+set -o nounset
+# Pipes return the exit status of the last command to exit with a non-zero status.
+set -o pipefail
 
-check_url_format() {
-    url=$1
+# --- Function to display usage information ---
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Description: Checks for the WordPress generator meta tag on a given URL."
+    echo "Example: $0 https://example.com"
+    exit 1
+}
 
-    # Check if the URL starts with "http://" or "https://"
-    if [[ "$url" =~ ^https?:// ]]; then
-        echo "URL is properly formatted."
-    else
-        echo "Error: URL must start with 'http://' or 'https://'."
+# --- Main function ---
+main() {
+    local url="$1"
+
+    # 1. Improved URL Validation
+    # This regex is slightly more robust.
+    if ! [[ "$url" =~ ^https?://[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,} ]]; then
+        echo "Error: Invalid URL format. It must start with 'http://' or 'https://' and be a valid domain." >&2
         exit 1
     fi
-}
 
-check_wp_meta() {
-    url=$1
-    # Download the HTML source code of the page
-    html=$(curl -s "$url")
+    echo "[-] Checking URL: $url"
 
-    # Check for the WordPress meta tag
-    if echo "$html" | grep -q 'name="generator" content="WordPress'; then
-        echo "The website is using WordPress (detected via meta tag)."
+    # 2. Improved WordPress Check
+    # - Use curl with -L to follow redirects.
+    # - Use -f to fail silently on server errors (like 404).
+    # - Pipe output directly to grep for efficiency.
+    # - Use grep with -q (quiet) and -i (case-insensitive).
+    if curl -s -L -f "$url" | grep -q -i 'name="generator" content="WordPress'; then
+        echo "[+] WordPress detected (via meta tag)."
     else
-        echo "No WordPress meta tag found."
+        # Check the exit code of the curl/grep pipe.
+        # A non-zero status could mean curl failed or grep didn't find a match.
+        echo "[-] No WordPress meta tag found or URL is not accessible."
     fi
 }
 
-check_url_format "$1"
-check_wp_meta "$1"
+# --- Script Entry Point ---
+# 3. Check for command-line argument
+if [ "$#" -ne 1 ]; then
+    usage
+fi
 
+main "$1"
