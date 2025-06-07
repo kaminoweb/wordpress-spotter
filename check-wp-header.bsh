@@ -1,0 +1,110 @@
+
+#!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-header.bsh                                 +
+#+ Description    :   Scans HTTP headers for WordPress-related            +
+#+                :   information, such as X-Pingback or REST API links.  +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com/                              +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/07/25                                              +
+#+------------------------------------------------------------------------+
+
+#set -x # Uncomment for debugging
+
+# --- Functions ---
+
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
+    exit 1
+}
+
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
+}
+
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
+        exit 1
+    fi
+}
+
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (WordPress-related headers detected)."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (no common WordPress headers detected)."
+    fi
+}
+
+# --- Main Logic ---
+
+main() {
+    if [ "$#" -ne 1 ]; then
+        usage
+    fi
+
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
+
+    IS_WORDPRESS=false # Default assumption
+    local FOUND_HEADERS=()
+
+    # Common WordPress-related header patterns (case-insensitive)
+    local WP_HEADER_PATTERNS=(
+        "X-Pingback:"
+        "Link:.*rel=\"https://api.w.org/\"" # WordPress REST API discovery
+        "Link:.*rel=\"profile\".*gmpg.org/xfn/11" # XFN profile link, common in WP themes
+        "Link:.*rel=\"pingback\".*xmlrpc.php" # XML-RPC pingback discovery
+        "X-Powered-By:.*WordPress" # Less common now, but possible
+        "X-Generator:.*WordPress" # Less common, but possible
+    )
+
+    echo "Attempting to fetch HTTP headers from: ${TARGET_URL}"
+    echo "Please wait..."
+
+    # Fetch only headers (-I) and follow redirects (-L)
+    local HEADERS
+    HEADERS=$(curl -s -L -I --max-time 10 "${TARGET_URL}" 2>/dev/null)
+
+    if [ -z "${HEADERS}" ]; then
+        echo "No HTTP headers received or unable to connect to ${TARGET_URL}."
+    else
+        echo "Checking for WordPress-related headers..."
+        for pattern in "${WP_HEADER_PATTERNS[@]}"; do
+            if echo "${HEADERS}" | grep -iq "${pattern}"; then
+                # Extract the full matching line for display
+                local matched_line=$(echo "${HEADERS}" | grep -i "${pattern}" | head -n 1)
+                FOUND_HEADERS+=("${matched_line}")
+                IS_WORDPRESS=true
+            fi
+        done
+
+        if [ "${IS_WORDPRESS}" = true ]; then
+            echo "Detected WordPress-related headers:"
+            for header_line in "${FOUND_HEADERS[@]}"; do
+                echo "  - ${header_line}"
+            done
+        else
+            echo "No common WordPress-related headers detected in the response."
+        fi
+    fi
+
+    conclusion
+}
+
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
+main "$@"

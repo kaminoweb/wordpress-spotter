@@ -1,52 +1,111 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-cookies.bsh                                +
-#+ Description    :   Check for WordPress cookies on a given URL.         +
-#+                                                                        +
+#+ Description    :   Detects WordPress-specific cookies such as          +
+#+                :   wordpress_logged_in_ and others.                    +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
-#+ Creation       :   2024-10-20                                          +
-#+ Modified       :   2025-06-06                                          +
+#+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+#set -x # Uncomment for debugging
+
+# --- Functions ---
 
 usage() {
-    echo "Usage: $0 <url>" >&2
-    echo "Example: $0 https://example.com" >&2
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
+}
+
 check_url_format() {
-    local url=$1
-    if [[ ! "$url" =~ ^https?:// ]]; then
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
         echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
-check_wp_cookies() {
-    local url=$1
-    # Fetch cookies using curl, following redirects
-    local cookies
-    cookies=$(curl -s -L -I "$url" | grep -i 'Set-Cookie')
-
-    # Check for WordPress-specific cookies
-    if echo "$cookies" | grep -q 'wordpress_logged_in_\|wp-settings-\|wp-settings-time-'; then
-        echo "WordPress detected via cookies."
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (WordPress-specific cookies detected)."
     else
-        echo "No WordPress-specific cookies found."
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (no WordPress-specific cookies detected)."
     fi
 }
 
+# --- Main Logic ---
+
 main() {
-    if [ -z "$1" ]; then
+    if [ "$#" -ne 1 ]; then
         usage
     fi
 
-    check_url_format "$1"
-    check_wp_cookies "$1"
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
+
+    IS_WORDPRESS=false # Default assumption
+    local WP_COOKIE_PATTERNS=(
+        "wordpress_logged_in_"
+        "wordpress_test_cookie"
+        "wp-settings-"
+        "wp-postpass_"
+        "comment_author_"
+        "wordpress_" # General WordPress cookie prefix
+    )
+    local FOUND_COOKIES=()
+
+    echo "Attempting to fetch headers from: ${TARGET_URL}"
+    echo "Please wait..."
+
+    # Fetch headers and filter for Set-Cookie lines
+    local HEADERS
+    HEADERS=$(curl -s -L --max-time 10 -D - -o /dev/null "${TARGET_URL}" 2>/dev/null | grep -i "Set-Cookie:")
+
+    if [ -z "${HEADERS}" ]; then
+        echo "No 'Set-Cookie' headers found or unable to connect to ${TARGET_URL}."
+    else
+        echo "Checking for WordPress-specific cookies..."
+        while IFS= read -r line; do
+            local cookie_name=$(echo "${line}" | sed -n 's/^[Ss]et-[Cc]ookie: \([^=]*\)=.*/\1/p' | xargs) # Extract cookie name
+            if [ -n "${cookie_name}" ]; then
+                for pattern in "${WP_COOKIE_PATTERNS[@]}"; do
+                    if [[ "${cookie_name}" == *"${pattern}"* ]]; then
+                        FOUND_COOKIES+=("${cookie_name}")
+                        IS_WORDPRESS=true
+                        break # Found a match for this cookie line, move to next line
+                    fi
+                done
+            fi
+        done <<< "${HEADERS}"
+
+        if [ "${IS_WORDPRESS}" = true ]; then
+            echo "Detected WordPress-specific cookies:"
+            for cookie in "${FOUND_COOKIES[@]}"; do
+                echo "  - ${cookie}"
+            done
+        else
+            echo "No common WordPress-specific cookies detected in the response headers."
+        fi
+    fi
+
+    conclusion
 }
 
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
 main "$@"

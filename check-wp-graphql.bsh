@@ -1,55 +1,103 @@
+
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-graphql.bsh                                +
-#+ Description    :   Checks for a responsive WordPress GraphQL endpoint. +
-#+                                                                        +
+#+ Description    :   Checks if the website responds to the WordPress     +
+#+                :   GraphQL API (requires WPGraphQL plugin).            +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
-#+ Modified       :   06/06/25                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
-# Treat unset variables as an error when substituting.
-set -u
-# Ensures that a pipeline command returns the exit status of the last command to exit with a non-zero status.
-set -o pipefail
+#set -x # Uncomment for debugging
 
 # --- Functions ---
 
-# Print usage information and exit.
 usage() {
-  echo "Usage: $0 <url>"
-  echo "Example: $0 https://example.com"
-  exit 1
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
+    exit 1
 }
 
-# --- Main Script ---
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
+}
 
-# Check if a URL argument is provided. The `${1-}` syntax prevents an "unbound variable" error when `set -u` is active.
-if [ -z "${1-}" ]; then
-  echo "Error: No URL provided." >&2 # Print errors to stderr
-  usage
-fi
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
+        exit 1
+    fi
+}
 
-url="$1"
-graphql_url="${url%/}/graphql" # Remove trailing slash from URL if it exists, then add /graphql
-query='{"query": "query { __typename }"}'
-response_body_file=$(mktemp) # Create a secure temporary file
-trap 'rm -f "$response_body_file"' EXIT # Ensure temp file is deleted on script exit
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site with an active GraphQL API."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to have an active WordPress GraphQL API."
+    fi
+}
 
-# Use curl to get the HTTP status code and write the body to a temp file.
-# -L: Follow redirects.
-# --connect-timeout 10: Time out after 10 seconds.
-# -w '%{http_code}': Write out the HTTP status code to stdout.
-# -o "$response_body_file": Write the response body to our temp file.
-http_code=$(curl -s -L --connect-timeout 10 -w "%{http_code}" -o "$response_body_file" -X POST -H "Content-Type: application/json" -d "$query" "$graphql_url")
+# --- Main Logic ---
 
-# Check if the HTTP status is 200 and the response body indicates a successful GraphQL query.
-if [ "$http_code" -eq 200 ] && grep -q '"data":{"__typename"' "$response_body_file"; then
-  echo "True"
-else
-  echo "False"
-fi
+main() {
+    if [ "$#" -ne 1 ]; then
+        usage
+    fi
+
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
+
+    local GRAPHQL_ENDPOINT="${TARGET_URL}/graphql" # Common endpoint for WPGraphQL
+    local STATUS_CODE
+    IS_WORDPRESS=false # Default assumption
+
+    echo "Attempting to check WordPress GraphQL API at: ${GRAPHQL_ENDPOINT}"
+    echo "Please wait..."
+
+    # GraphQL endpoints typically expect POST requests. A GET request might return 400, 405, or 200 with an error.
+    # We'll check for these as indicators that *something* is listening.
+    STATUS_CODE=$(probe_url "${GRAPHQL_ENDPOINT}")
+
+    echo "HTTP Status Code for GraphQL endpoint: ${STATUS_CODE}"
+
+    if [ "${STATUS_CODE}" -eq 200 ]; then
+        echo "Success: The GraphQL endpoint responded with a 200 OK status code."
+        echo "This indicates the API is likely active and accessible, possibly accepting GET requests."
+        IS_WORDPRESS=true
+    elif [ "${STATUS_CODE}" -eq 400 ]; then
+        echo "Info: The GraphQL endpoint returned a 400 Bad Request status code."
+        echo "This is a common response for GraphQL endpoints when a GET request is made without a valid query, indicating the API is present."
+        IS_WORDPRESS=true
+    elif [ "${STATUS_CODE}" -eq 405 ]; then
+        echo "Info: The GraphQL endpoint returned a 405 Method Not Allowed status code."
+        echo "This is a common response for GraphQL endpoints that strictly expect POST requests, indicating the API is present."
+        IS_WORDPRESS=true
+    elif [ "${STATUS_CODE}" -eq 404 ]; then
+        echo "Warning: The GraphQL endpoint returned a 404 Not Found error."
+        echo "This usually means the WPGraphQL plugin is not installed or the endpoint is different."
+    elif [ "${STATUS_CODE}" -eq 0 ]; then
+        echo "Error: Could not connect to the GraphQL endpoint or received an invalid response."
+        echo "This might indicate a network issue, an invalid URL, or the server is down/unreachable."
+    else
+        echo "Warning: The GraphQL endpoint returned an unexpected status code: ${STATUS_CODE}."
+        echo "This might indicate an issue with the API, server configuration, or a firewall blocking access."
+    fi
+
+    conclusion
+}
+
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
+main "$@"

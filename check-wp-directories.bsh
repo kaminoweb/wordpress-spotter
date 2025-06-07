@@ -1,28 +1,26 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-directories.bsh                            +
-#+ Description    :   Checks if a URL hosts a WordPress site by probing   +
-#+                :   for common directories and files.                   +
+#+ Description    :   Checks for common WordPress directories on a given  +
+#+                :   URL to determine if it's a WordPress site.          +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
-#+ Revision       :   06/06/25                                            +
+#+ Revision       :   15/05/24                                            +
 #+------------------------------------------------------------------------+
 
 #set -x # Uncomment for debugging
 
-# --- Style Definitions ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# --- Global Variables ---
+TARGET_URL=""
+IS_WORDPRESS=false
 
 # --- Functions ---
 
 usage() {
     echo "Usage: $0 <URL>"
-    echo "Example: $0 https://example.com"
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
@@ -32,12 +30,11 @@ probe_url() {
     STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
     # Ensure STATUS_CODE is a number
     if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
-        STATUS_CODE=0
+        STATUS_CODE=0 # Indicate an error or non-numeric response
     fi
     echo "${STATUS_CODE}"
 }
 
-# Validate the URL format
 check_url_format() {
     local URL=$1
     if [[ ! "${URL}" =~ ^https?:// ]]; then
@@ -46,56 +43,56 @@ check_url_format() {
     fi
 }
 
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site based on common directory checks."
+    fi
+}
+
 # --- Main Logic ---
 
-# 1. Check for URL argument
-if [ -z "$1" ]; then
-    echo -e "${RED}Error: No URL provided.${NC}"
-    usage
-fi
-
-TARGET_URL=$1
-
-# 2. Validate URL format
-if [[ ! "${TARGET_URL}" =~ ^https?:// ]]; then
-    echo -e "${RED}Error: URL must start with 'http://' or 'https://'.${NC}"
-    usage
-fi
-
-# Remove trailing slash if it exists
-TARGET_URL=${TARGET_URL%/}
-
-echo -e "${YELLOW}Checking URL: ${TARGET_URL}${NC}"
-
-# 3. Define WordPress paths to check
-declare -a WP_PATHS=(
-    "/wp-content/"
-    "/wp-includes/"
-    "/wp-admin/"
-    "/readme.html"
-    "/xmlrpc.php"
-)
-
-IS_WORDPRESS=false
-
-# 4. Probe each path
-for PATH in "${WP_PATHS[@]}"; do
-    URL_TO_CHECK="${TARGET_URL}${PATH}"
-    STATUS_CODE=$(probe_url "${URL_TO_CHECK}")
-
-    if [ "${STATUS_CODE}" -eq 200 ] || [ "${STATUS_CODE}" -eq 403 ] || [ "${STATUS_CODE}" -eq 301 ] || [ "${STATUS_CODE}" -eq 302 ]; then
-        echo -e "  -> Found '${PATH}' with status ${GREEN}${STATUS_CODE}${NC}"
-        IS_WORDPRESS=true
-        break # Found one, no need to check further
-    else
-        echo -e "  -> Did not find '${PATH}' (status ${RED}${STATUS_CODE}${NC})"
+main() {
+    if [ -z "$1" ]; then
+        usage
     fi
-done
 
-# 5. Final conclusion
-echo "" # Newline for readability
-if [ "${IS_WORDPRESS}" = true ]; then
-    echo -e "${GREEN}Conclusion: The website at ${TARGET_URL} is likely a WordPress site.${NC}"
-else
-    echo -e "${RED}Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site.${NC}"
-fi
+    TARGET_URL=$1 # Assign the argument to the global TARGET_URL
+    check_url_format "${TARGET_URL}"
+
+    # IS_WORDPRESS is already initialized to false globally
+
+    # List of common WordPress directories to check
+    # /wp-admin/ is often protected or redirects, so /wp-content/ and /wp-includes/ are better indicators.
+    WP_DIRECTORIES=("/wp-content/" "/wp-includes/")
+
+    echo "Checking common WordPress directories for: ${TARGET_URL}"
+    echo "--------------------------------------------------"
+
+    for DIR in "${WP_DIRECTORIES[@]}"; do
+        FULL_URL="${TARGET_URL}${DIR}"
+        echo -n "Probing ${FULL_URL} ... "
+        STATUS_CODE=$(probe_url "${FULL_URL}")
+
+        case "${STATUS_CODE}" in
+            200|301|302|403) # 200 OK, 301/302 Redirect, 403 Forbidden (common for directory listings)
+                echo "Found (HTTP ${STATUS_CODE})"
+                IS_WORDPRESS=true # Set the global IS_WORDPRESS flag
+                ;;
+            404)
+                echo "Not Found (HTTP ${STATUS_CODE})"
+                ;;
+            *)
+                echo "Unexpected status or error (HTTP ${STATUS_CODE})"
+                ;;
+        esac
+    done
+
+    conclusion
+}
+
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
+main "$@"

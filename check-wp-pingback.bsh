@@ -1,85 +1,86 @@
+
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-pingback.bsh                               +
-#+ Description    :   Checks for the X-Pingback header to detect WordPress.+
-#+                                                                        +
+#+ Description    :   Scans for WordPress X-Pingback header in the        +
+#+                :   HTTP response.                                      +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
-#+ Modified       :   06/06/25                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-# Exit on error, treat unset variables as errors, and handle pipe failures
-set -euo pipefail
+#set -x # Uncomment for debugging
 
 # --- Functions ---
 
-# Checks for required commands and exits if any are missing.
-check_dependencies() {
-    if ! command -v curl &> /dev/null; then
-        echo "Error: 'curl' command not found. Please install curl to run this script." >&2
-        exit 1
-    fi
-}
-
-# Prints a usage message and exits.
 usage() {
     echo "Usage: $0 <URL>"
-    echo "Description: Checks if a given URL exposes a WordPress pingback endpoint."
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
-# Checks if the URL is properly formatted.
-# Exits with an error if the format is invalid.
-validate_url_format() {
-    local url=$1
-    if [[ ! "$url" =~ ^https?:// ]]; then
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
+}
+
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
         echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
 }
 
-# Fetches headers and checks for the X-Pingback header.
-check_wp_pingback() {
-    local url=$1
-    echo "[-] Checking for X-Pingback header at: $url"
-    
-    local headers
-    if ! headers=$(curl -I -s --fail --connect-timeout 10 "$url" 2>&1); then
-        if echo "$headers" | grep -q "Connection timed out"; then
-            echo "[-] Error: Connection to $url timed out." >&2
-        elif echo "$headers" | grep -q "Could not resolve host"; then
-            echo "[-] Error: Could not resolve host for $url. Check the URL or your network connection." >&2
-        else
-            echo "[-] Error: Could not retrieve headers from $url. The URL may be unreachable or returned an HTTP error." >&2
-        fi
-        return 1
-    fi
-
-    if echo "$headers" | grep -iq 'X-Pingback:.*xmlrpc\.php'; then
-        echo "[+] WordPress detected via X-Pingback header."
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (X-Pingback header detected)."
     else
-        echo "[-] No X-Pingback header found."
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (X-Pingback header not detected)."
     fi
 }
 
-# --- Main Execution ---
+# --- Main Logic ---
 
 main() {
-    # Check if the correct number of arguments is provided
     if [ "$#" -ne 1 ]; then
         usage
     fi
 
-    # Check for required dependencies
-    check_dependencies
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
 
-    local target_url=$1
-    
-    validate_url_format "$target_url"
-    check_wp_pingback "$target_url"
+    IS_WORDPRESS=false # Default assumption
+    local PINGBACK_HEADER=""
+
+    echo "Attempting to fetch headers from: ${TARGET_URL}"
+    echo "Please wait..."
+
+    # Fetch only headers (-I) and follow redirects (-L)
+    PINGBACK_HEADER=$(curl -s -L -I --max-time 10 "${TARGET_URL}" 2>/dev/null | grep -i "X-Pingback:")
+
+    if [ -n "${PINGBACK_HEADER}" ]; then
+        echo "Success: 'X-Pingback' header detected."
+        echo "Header details: ${PINGBACK_HEADER}"
+        echo "This header is commonly present on WordPress sites, indicating the Pingback feature is active."
+        IS_WORDPRESS=true
+    else
+        echo "Info: 'X-Pingback' header not detected in the response."
+        echo "This header might be removed for security reasons, or the site is not WordPress."
+    fi
+
+    conclusion
 }
 
-# Execute the main function with all script arguments
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
 main "$@"

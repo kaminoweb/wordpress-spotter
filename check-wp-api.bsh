@@ -1,81 +1,115 @@
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-api.bsh                                    +
-#+ Description    :   Checks if a WordPress site has the REST API enabled.+
-#+                                                                        +
+#+ Description    :   Checks if the website responds to WordPress REST API requests. +
+#+                :   Probes the /wp-json/ endpoint and verifies its response. +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
-#+ Revision       :   06/06/25                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-#set -x  #Debugging
+#set -x # Uncomment for debugging
 
 # --- Functions ---
 
-# Displays usage information
 usage() {
-    echo "Usage: $0 <url>"
-    echo "Example: $0 https://example.com"
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
-# Checks if a command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    # curl -o /dev/null: discard output
+    # -s: silent mode (don't show progress meter or error messages)
+    # -L: follow redirects
+    # --max-time 10: maximum time in seconds that you allow the whole operation to take
+    # -w "%{http_code}": print only the HTTP status code
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number. If curl fails or returns non-numeric, set to 0.
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
 }
 
-# Main function to check the WordPress API
-check_wp_api() {
-    local url=$1
-    local user_agent="WordPress API Checker/1.0"
-
-    # Check if the URL starts with "http://" or "https://"
-    if [[ ! "$url" =~ ^https?:// ]]; then
-        echo "[-] Error: URL must start with 'http://' or 'https://'."
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
+}
 
-    echo "[*] Checking WordPress REST API for: $url"
-
-    # Construct the WordPress REST API URL
-    local api_url="${url%/}/wp-json/"
-
-    # Make a request to the WordPress REST API endpoint
-    http_code=$(curl -s -o /dev/null -w "%{http_code}" -A "$user_agent" "$api_url")
-    curl_exit_code=$?
-
-    # Check curl's exit code
-    if [ $curl_exit_code -ne 0 ]; then
-        echo "[-] Error: curl command failed with exit code $curl_exit_code. Check your network connection or the URL."
-        return 1
-    fi
-
-    # Check if the API responds with a 200 (OK) status code
-    if [[ "$http_code" == "200" ]]; then
-        echo "[+] The website is responding to the WordPress REST API."
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} appears to respond to WordPress REST API requests."
     else
-        echo "[-] The website is not responding to the WordPress REST API (HTTP Status: $http_code)."
+        echo "Conclusion: The website at ${TARGET_URL} does NOT appear to respond to WordPress REST API requests."
     fi
 }
 
-# --- Main Execution ---
+# --- Main Logic ---
 
 main() {
-    # Check if curl is installed
-    if ! command_exists curl; then
-        echo "[-] Error: curl is not installed. Please install it to continue."
-        exit 1
-    fi
-
-    # Check for URL argument
     if [ -z "$1" ]; then
         usage
     fi
 
-    check_wp_api "$1"
+    TARGET_URL=$1
+    check_url_format "${TARGET_URL}"
+
+    # Construct the full URL for the WordPress REST API root endpoint
+    WP_API_URL="${TARGET_URL}/wp-json/"
+
+    echo "Checking WordPress REST API endpoint at: ${WP_API_URL}"
+
+    # Probe the URL to get its HTTP status code
+    HTTP_STATUS=$(probe_url "${WP_API_URL}")
+    echo "HTTP Status Code for ${WP_API_URL}: ${HTTP_STATUS}"
+
+    IS_WORDPRESS=false # Default to false
+
+    # Check if the status code indicates a successful response (2xx)
+    # curl -L handles redirects, so probe_url will give the final status after redirects.
+    if [[ "${HTTP_STATUS}" -ge 200 && "${HTTP_STATUS}" -lt 300 ]]; then
+        echo "Status code indicates success (${HTTP_STATUS}). Fetching content to verify..."
+        # Fetch the actual content of the API endpoint
+        API_CONTENT=$(curl -s -L --max-time 10 "${WP_API_URL}")
+
+        if [ -z "${API_CONTENT}" ]; then
+            echo "Warning: API endpoint returned success status but no content." >&2
+        else
+            # Check for common WordPress REST API root JSON elements
+            # WordPress REST API root typically contains "name", "description", "namespaces", "routes"
+            # We'll check for "name" and "namespaces" as strong indicators.
+            # Using `grep -q` for quiet check (only exit status matters).
+            if echo "${API_CONTENT}" | grep -q '"name":' && \
+               echo "${API_CONTENT}" | grep -q '"namespaces":'; then
+                echo "Content contains typical WordPress REST API root elements."
+                IS_WORDPRESS=true
+            else
+                echo "Content does not appear to be a standard WordPress REST API root response."
+                # Optionally, print a snippet of the content for debugging
+                # echo "Snippet of content: $(echo "${API_CONTENT}" | head -n 5)"
+            fi
+        fi
+    elif [[ "${HTTP_STATUS}" -eq 404 ]]; then
+        echo "API endpoint returned 404 Not Found."
+    elif [[ "${HTTP_STATUS}" -eq 0 ]]; then
+        echo "Error: Could not connect to ${WP_API_URL} or received no response within timeout." >&2
+    else
+        echo "API endpoint returned an unexpected HTTP status code: ${HTTP_STATUS}."
+        echo "This might indicate a custom setup, security measure, or non-WordPress site."
+    fi
+
+    conclusion
 }
 
-# Run the main function with all script arguments
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
 main "$@"

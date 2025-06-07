@@ -1,58 +1,93 @@
+
 #!/bin/bash
 #+------------------------------------------------------------------------+
-#| Name           :   check-wp-readme.bsh                                 |
-#| Description    :   Checks for WordPress readme.html and version.       |
-#| Author         :   KAMINOWEB INC                                       |
-#| www            :   https://kaminoweb.com                               |
-#| Creation       :   20/10/24                                            +
-#| Modified       :   06/06/25                                            |
+#+ Name           :   check-wp-readme.bsh                                 +
+#+ Description    :   Detects readme.html in the root directory to        +
+#+                :   identify WordPress installations.                   +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com/                              +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-set -eo pipefail # Exit on error, and on pipe failures
+#set -x # Uncomment for debugging
+
+# --- Functions ---
 
 usage() {
-    echo "Usage: $0 <url>"
-    echo "Example: $0 https://example.com"
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
-# Function to print errors to stderr
-error() {
-    echo "Error: $1" >&2
-    exit 1
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
 }
+
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
+        exit 1
+    fi
+}
+
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (readme.html found)."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (readme.html not found or inaccessible)."
+    fi
+}
+
+# --- Main Logic ---
 
 main() {
-    local url="$1"
-
-    # 1. Input Validation
-    if [[ -z "$url" ]]; then
+    if [ "$#" -ne 1 ]; then
         usage
     fi
 
-    # 2. URL Format Check
-    if [[ ! "$url" =~ ^https?:// ]]; then
-        error "URL must start with 'http://' or 'https://'."
-    fi
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
 
-    # 3. Check for readme.html and get version
-    local readme_url="${url%/}/readme.html"
-    local response
-    response=$(curl -sL "$readme_url") # -L to follow redirects
+    local README_FILE_URL="${TARGET_URL}/readme.html"
+    local STATUS_CODE
+    IS_WORDPRESS=false # Default assumption
 
-    if [[ -n "$response" ]]; then
-        echo "WordPress detected: $readme_url"
-        # 4. Extract version
-        local version
-        version=$(echo "$response" | grep -oP 'Version \K[0-9.]+')
-        if [[ -n "$version" ]]; then
-            echo "WordPress Version: $version"
-        else
-            echo "Could not determine WordPress version from readme.html."
-        fi
+    echo "Attempting to check for readme.html at: ${README_FILE_URL}"
+    echo "Please wait..."
+
+    STATUS_CODE=$(probe_url "${README_FILE_URL}")
+
+    echo "HTTP Status Code for readme.html: ${STATUS_CODE}"
+
+    if [ "${STATUS_CODE}" -eq 200 ]; then
+        echo "Success: Found readme.html with a 200 OK status code."
+        echo "This file is a strong indicator of a WordPress installation."
+        IS_WORDPRESS=true
+    elif [ "${STATUS_CODE}" -eq 404 ]; then
+        echo "Info: readme.html was not found (404 Not Found)."
+        echo "This file might have been removed for security reasons, or the site is not WordPress."
+    elif [ "${STATUS_CODE}" -eq 0 ]; then
+        echo "Error: Could not connect to ${README_FILE_URL} or received an invalid response."
+        echo "This might indicate a network issue, an invalid URL, or the server is down/unreachable."
     else
-        echo "No WordPress readme.html file found."
+        echo "Warning: Received an unexpected status code (${STATUS_CODE}) for readme.html."
+        echo "This could mean the file exists but is protected, or it's not a WordPress site."
     fi
+
+    conclusion
 }
 
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
 main "$@"

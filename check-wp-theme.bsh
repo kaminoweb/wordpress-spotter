@@ -1,0 +1,123 @@
+
+#!/bin/bash
+#+------------------------------------------------------------------------+
+#+ Name           :   check-wp-theme.bsh                                  +
+#+ Description    :   Checks for common WordPress themes like             +
+#+                :   twentytwentyone and newer, and others like astra,   +
+#+                :   kadence, divi, Oceanwp, avada.                      +
+#+ Author         :   KAMINOWEB INC                                       +
+#+ www            :   https://kaminoweb.com/                              +
+#+                                                                        +
+#+ Creation       :   20/10/24                                            +
+#+ Revision       :   06/07/25                                              +
+#+------------------------------------------------------------------------+
+
+#set -x # Uncomment for debugging
+
+# --- Functions ---
+
+usage() {
+    echo "Usage: $0 <URL>"
+    echo "Example: $0 https://kaminoweb.com"
+    exit 1
+}
+
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
+    fi
+    echo "${STATUS_CODE}"
+}
+
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
+        echo "Error: URL must start with 'http://' or 'https://'." >&2
+        exit 1
+    fi
+}
+
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (common theme detected)."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (no common themes detected)."
+    fi
+}
+
+# --- Main Logic ---
+
+main() {
+    if [ "$#" -ne 1 ]; then
+        usage
+    fi
+
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
+
+    IS_WORDPRESS=false # Default assumption
+    local FOUND_THEME=""
+
+    # List of common WordPress themes to check for
+    # We check for style.css as it's a mandatory file for themes
+    local WP_THEMES=(
+        "twentytwentyfour"
+        "twentytwentythree"
+        "twentytwentytwo"
+        "twentytwentyone"
+        "twentytwenty"
+        "astra"
+        "kadence"
+        "divi"
+        "oceanwp"
+        "avada"
+        "hello-elementor" # Common with Elementor page builder
+        "neve"
+        "generatepress"
+    )
+
+    echo "Attempting to check for common WordPress themes at: ${TARGET_URL}/wp-content/themes/"
+    echo "Please wait..."
+
+    for theme in "${WP_THEMES[@]}"; do
+        local THEME_FILE_URL="${TARGET_URL}/wp-content/themes/${theme}/style.css"
+        local STATUS_CODE
+
+        echo "  Checking for theme: ${theme} (${THEME_FILE_URL})..."
+        STATUS_CODE=$(probe_url "${THEME_FILE_URL}")
+
+        if [ "${STATUS_CODE}" -eq 200 ]; then
+            echo "  Success: Found theme '${theme}' (style.css returned 200 OK)."
+            IS_WORDPRESS=true
+            FOUND_THEME="${theme}"
+            break # Found a theme, no need to check further
+        elif [ "${STATUS_CODE}" -eq 404 ]; then
+            echo "  Info: Theme '${theme}' not found (404 Not Found)."
+        elif [ "${STATUS_CODE}" -eq 0 ]; then
+            echo "  Error: Could not connect to ${THEME_FILE_URL} or received an invalid response."
+            echo "  This might indicate a network issue, an invalid URL, or the server is down/unreachable."
+            # We don't break here, as other themes might still be accessible
+        else
+            echo "  Warning: Received an unexpected status code (${STATUS_CODE}) for theme '${theme}'."
+        fi
+    done
+
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo ""
+        echo "Summary: A common WordPress theme ('${FOUND_THEME}') was detected."
+    else
+        echo ""
+        echo "Summary: No common WordPress themes were detected."
+    fi
+
+    conclusion
+}
+
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
+main "$@"

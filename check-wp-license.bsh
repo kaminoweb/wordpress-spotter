@@ -1,52 +1,93 @@
+
 #!/bin/bash
 #+------------------------------------------------------------------------+
 #+ Name           :   check-wp-license.bsh                                +
-#+ Description    :   Checks for a WordPress license.txt file at a        +
-#+                  :   given URL. Exits with 0 if found, 1 otherwise.    +
+#+ Description    :   Checks for the existence of license.txt in the      +
+#+                :   root directory, a common WordPress file.            +
 #+ Author         :   KAMINOWEB INC                                       +
-#+ www            :   https://kaminoweb.com                               +
+#+ www            :   https://kaminoweb.com/                              +
 #+                                                                        +
 #+ Creation       :   20/10/24                                            +
-#+ Modified       :   06/06/25                                            +
+#+ Revision       :   06/07/25                                              +
 #+------------------------------------------------------------------------+
 
-#set -x  # Uncomment for debugging
+#set -x # Uncomment for debugging
 
-# Prints a usage message and exits.
+# --- Functions ---
+
 usage() {
     echo "Usage: $0 <URL>"
-    echo "Example: $0 https://example.com"
+    echo "Example: $0 https://kaminoweb.com"
     exit 1
 }
 
-main() {
-    # Ensure an argument is provided
-    if [[ -z "$1" ]]; then
-        usage
+probe_url() {
+    local URL_TO_CHECK=$1
+    local STATUS_CODE
+    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
+    # Ensure STATUS_CODE is a number
+    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
+        STATUS_CODE=0
     fi
+    echo "${STATUS_CODE}"
+}
 
-    local url="$1"
-
-    # Check if the URL starts with "http://" or "https://"
-    if ! [[ "$url" =~ ^https?:// ]]; then
+check_url_format() {
+    local URL=$1
+    if [[ ! "${URL}" =~ ^https?:// ]]; then
         echo "Error: URL must start with 'http://' or 'https://'." >&2
-        exit 1
-    fi
-
-    # Check for the WordPress license file, following redirects (-L)
-    local license_url="${url%/}/license.txt"
-    local http_code
-
-    http_code=$(curl -s -L -o /dev/null -w "%{http_code}" "$license_url")
-
-    # If the file exists, it will return a 200 status code
-    if [[ "$http_code" == "200" ]]; then
-        echo "WordPress detected via license.txt file."
-        exit 0
-    else
-        echo "No license.txt file found (HTTP status: $http_code)."
         exit 1
     fi
 }
 
+conclusion() {
+    echo ""
+    if [ "${IS_WORDPRESS}" = true ]; then
+        echo "Conclusion: The website at ${TARGET_URL} is likely a WordPress site (license.txt found)."
+    else
+        echo "Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site (license.txt not found or inaccessible)."
+    fi
+}
+
+# --- Main Logic ---
+
+main() {
+    if [ "$#" -ne 1 ]; then
+        usage
+    fi
+
+    TARGET_URL="$1"
+    check_url_format "${TARGET_URL}"
+
+    local LICENSE_FILE_URL="${TARGET_URL}/license.txt"
+    local STATUS_CODE
+    IS_WORDPRESS=false # Default assumption
+
+    echo "Attempting to check for license.txt at: ${LICENSE_FILE_URL}"
+    echo "Please wait..."
+
+    STATUS_CODE=$(probe_url "${LICENSE_FILE_URL}")
+
+    echo "HTTP Status Code for license.txt: ${STATUS_CODE}"
+
+    if [ "${STATUS_CODE}" -eq 200 ]; then
+        echo "Success: Found license.txt with a 200 OK status code."
+        echo "This file is commonly found in the root directory of WordPress installations."
+        IS_WORDPRESS=true
+    elif [ "${STATUS_CODE}" -eq 404 ]; then
+        echo "Info: license.txt was not found (404 Not Found)."
+        echo "This file might be missing, renamed, or the site is not WordPress."
+    elif [ "${STATUS_CODE}" -eq 0 ]; then
+        echo "Error: Could not connect to ${LICENSE_FILE_URL} or received an invalid response."
+        echo "This might indicate a network issue, an invalid URL, or the server is down/unreachable."
+    else
+        echo "Warning: Received an unexpected status code (${STATUS_CODE}) for license.txt."
+        echo "This could mean the file exists but is protected, or it's not a WordPress site."
+    fi
+
+    conclusion
+}
+
+# --- Execute Script ---
+# Pass all command-line arguments to the main function
 main "$@"
