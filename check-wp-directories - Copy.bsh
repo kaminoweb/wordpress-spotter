@@ -27,20 +27,20 @@ usage() {
 }
 
 probe_url() {
-    local URL_TO_CHECK=$1
-    local STATUS_CODE
-    STATUS_CODE=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "${URL_TO_CHECK}")
-    # Ensure STATUS_CODE is a number
-    if ! [[ "${STATUS_CODE}" =~ ^[0-9]+$ ]]; then
-        STATUS_CODE=0
+    local url_to_check=$1
+    local status_code
+    status_code=$(curl -o /dev/null -s -L --max-time 10 -w "%{http_code}" "$url_to_check")
+    # Ensure status_code is a number
+    if ! [[ "$status_code" =~ ^[0-9]+$ ]]; then
+        status_code=0
     fi
-    echo "${STATUS_CODE}"
+    echo "$status_code"
 }
 
 # Validate the URL format
 check_url_format() {
-    local URL=$1
-    if [[ ! "${URL}" =~ ^https?:// ]]; then
+    local url=$1
+    if [[ ! "$url" =~ ^https?:// ]]; then
         echo "Error: URL must start with 'http://' or 'https://'." >&2
         exit 1
     fi
@@ -57,7 +57,7 @@ fi
 TARGET_URL=$1
 
 # 2. Validate URL format
-if [[ ! "${TARGET_URL}" =~ ^https?:// ]]; then
+if [[ ! "$TARGET_URL" =~ ^https?:// ]]; then
     echo -e "${RED}Error: URL must start with 'http://' or 'https://'.${NC}"
     usage
 fi
@@ -65,10 +65,10 @@ fi
 # Remove trailing slash if it exists
 TARGET_URL=${TARGET_URL%/}
 
-echo -e "${YELLOW}Checking URL: ${TARGET_URL}${NC}"
+echo -e "${YELLOW}Checking URL: $TARGET_URL${NC}"
 
 # 3. Define WordPress paths to check
-declare -a WP_PATHS=(
+declare -a wp_paths=(
     "/wp-content/"
     "/wp-includes/"
     "/wp-admin/"
@@ -76,26 +76,26 @@ declare -a WP_PATHS=(
     "/xmlrpc.php"
 )
 
-IS_WORDPRESS=false
+is_wordpress=false
 
 # 4. Probe each path
-for PATH in "${WP_PATHS[@]}"; do
-    URL_TO_CHECK="${TARGET_URL}${PATH}"
-    STATUS_CODE=$(probe_url "${URL_TO_CHECK}")
+for path in "${wp_paths[@]}"; do
+    url_to_check="$TARGET_URL$path"
+    status_code=$(probe_url "$url_to_check")
 
-    if [ "${STATUS_CODE}" -eq 200 ] || [ "${STATUS_CODE}" -eq 403 ] || [ "${STATUS_CODE}" -eq 301 ] || [ "${STATUS_CODE}" -eq 302 ]; then
-        echo -e "  -> Found '${PATH}' with status ${GREEN}${STATUS_CODE}${NC}"
-        IS_WORDPRESS=true
+    if [ "$status_code" -eq 200 ] || [ "$status_code" -eq 403 ] || [ "$status_code" -eq 301 ] || [ "$status_code" -eq 302 ]; then
+        echo -e "  -> Found '$path' with status ${GREEN}${status_code}${NC}"
+        is_wordpress=true
         break # Found one, no need to check further
     else
-        echo -e "  -> Did not find '${PATH}' (status ${RED}${STATUS_CODE}${NC})"
+        echo -e "  -> Did not find '$path' (status ${RED}${status_code}${NC})"
     fi
 done
 
 # 5. Final conclusion
 echo "" # Newline for readability
-if [ "${IS_WORDPRESS}" = true ]; then
-    echo -e "${GREEN}Conclusion: The website at ${TARGET_URL} is likely a WordPress site.${NC}"
+if [ "$is_wordpress" = true ]; then
+    echo -e "${GREEN}Conclusion: The website at $TARGET_URL is likely a WordPress site.${NC}"
 else
-    echo -e "${RED}Conclusion: The website at ${TARGET_URL} does not appear to be a WordPress site.${NC}"
+    echo -e "${RED}Conclusion: The website at $TARGET_URL does not appear to be a WordPress site.${NC}"
 fi
